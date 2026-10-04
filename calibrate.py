@@ -145,12 +145,29 @@ def main() -> None:
         if len(camera_points) == 4:
             cam_pts = np.array(camera_points, dtype=np.float32)
             H, _    = cv2.findHomography(cam_pts, SCREEN_POINTS)
-            np.savez(CALIBRATION_FILE, H=H, camera_index=np.array(camera_index))
-            print(f"\nCalibration saved to  {CALIBRATION_FILE}")
-            print(f"Camera index {camera_index} saved — just run:  uv run server.py")
-            # Brief pause so user sees the "Saving..." message
-            cv2.waitKey(1500)
-            break
+
+            # Generate live warped preview to confirm perspective rectification
+            warped = cv2.warpPerspective(frame, H, (CANVAS_W, CANVAS_H))
+            preview = cv2.resize(warped, (960, 540))
+
+            cv2.rectangle(preview, (0, 0), (preview.shape[1], 55), (0, 0, 0), -1)
+            cv2.putText(preview, "PREVIEW: Straightened Play Area! SPACE to Save, R to Redo",
+                        (15, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
+
+            cv2.imshow(WIN, preview)
+            key = cv2.waitKey(0) & 0xFF
+            if key == ord('r'):
+                camera_points.clear()
+                print("\n[calibration] Redoing clicks. Please click 1 -> 2 -> 3 -> 4 again.")
+                continue
+            elif key == ord('q'):
+                print("\n[calibration] Calibration cancelled.")
+                break
+            else:
+                np.savez(CALIBRATION_FILE, H=H, camera_index=np.array(camera_index))
+                print(f"\n[calibration] SUCCESS! Saved to {CALIBRATION_FILE}")
+                print(f"[calibration] Run: uv run server.py --debug")
+                break
 
     cap.release()
     cv2.destroyAllWindows()

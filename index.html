@@ -2,29 +2,246 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Ball Falling</title>
+  <title>StickyBounce Game</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; overflow: hidden; display: flex;
-           justify-content: center; align-items: center; height: 100vh; }
+    body {
+      background: #000;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+    }
     canvas { display: block; }
+
     #status {
       position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-      color: rgba(255,255,255,0.4); font: 14px/1 monospace;
-      pointer-events: none;
+      color: rgba(255,255,255,0.45); font: 13px/1 monospace;
+      pointer-events: none; z-index: 10;
+      background: rgba(0, 0, 0, 0.4); padding: 6px 14px; border-radius: 20px;
+      transition: opacity 0.2s ease;
     }
+
+    /* Gear button: hidden by default so screen is clean; only accessible via Tab/S key */
+    #gearBtn {
+      display: none;
+      position: fixed; top: 16px; right: 16px; z-index: 50;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #fff; font-size: 20px; cursor: pointer;
+      align-items: center; justify-content: center;
+      transition: all 0.2s ease;
+      backdrop-filter: blur(8px);
+    }
+    #gearBtn:hover {
+      background: rgba(255, 255, 255, 0.25);
+      transform: rotate(45deg) scale(1.08);
+      box-shadow: 0 0 16px rgba(0, 255, 220, 0.4);
+    }
+
+    /* Fullscreen rules: Hide all operator helper text completely */
+    :fullscreen #status,
+    :-webkit-full-screen #status,
+    :fullscreen #gearBtn,
+    :-webkit-full-screen #gearBtn,
+    body.is-fullscreen #status,
+    body.is-fullscreen #gearBtn {
+      display: none !important;
+    }
+
+    /* Settings Slide-in Drawer */
+    #settingsDrawer {
+      position: fixed; top: 0; right: -420px; width: 380px; height: 100vh;
+      background: rgba(15, 17, 26, 0.92);
+      backdrop-filter: blur(16px);
+      border-left: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: -10px 0 30px rgba(0, 0, 0, 0.7);
+      padding: 24px 22px;
+      color: #e2e8f0;
+      overflow-y: auto;
+      z-index: 100;
+      transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    #settingsDrawer.open { right: 0; }
+
+    .drawer-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 20px; padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .drawer-header h2 {
+      font-size: 19px; font-weight: 700; letter-spacing: 0.5px;
+      background: linear-gradient(135deg, #00f2fe, #4facfe);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .close-btn {
+      background: transparent; border: none; color: #94a3b8;
+      font-size: 26px; cursor: pointer; line-height: 1; padding: 2px 8px;
+    }
+    .close-btn:hover { color: #fff; }
+
+    .setting-section {
+      margin-bottom: 20px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 14px 14px 8px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .setting-section h3 {
+      font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+      color: #38bdf8; margin-bottom: 12px;
+    }
+
+    .control-row {
+      margin-bottom: 12px;
+    }
+    .control-label {
+      display: flex; justify-content: space-between; font-size: 13px;
+      color: #cbd5e1; margin-bottom: 6px;
+    }
+    .control-val {
+      color: #38bdf8; font-family: monospace; font-weight: bold;
+    }
+    input[type=range] {
+      width: 100%; accent-color: #00f2fe; cursor: pointer;
+    }
+
+    .checkbox-row {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 13px; color: #cbd5e1; margin-bottom: 10px; cursor: pointer;
+    }
+    .checkbox-row input {
+      width: 18px; height: 18px; accent-color: #00f2fe; cursor: pointer;
+    }
+
+    .action-btn {
+      width: 100%; padding: 10px; border-radius: 8px; border: none;
+      font-weight: 600; font-size: 13px; cursor: pointer; margin-top: 6px;
+      transition: background 0.2s;
+    }
+    .btn-clear { background: rgba(239, 68, 68, 0.25); color: #fca5a5; }
+    .btn-clear:hover { background: rgba(239, 68, 68, 0.45); }
+    .btn-reset { background: rgba(148, 163, 184, 0.2); color: #cbd5e1; margin-top: 8px; }
+    .btn-reset:hover { background: rgba(148, 163, 184, 0.35); }
   </style>
 </head>
 <body>
+
 <canvas id="c"></canvas>
-<div id="status">F = fullscreen · D = debug outlines</div>
+
+<div id="status">F = Fullscreen · D = Debug Outlines · Tab = Settings</div>
+
+<button id="gearBtn" title="Settings (Tab)">⚙</button>
+
+<div id="settingsDrawer">
+  <div class="drawer-header">
+    <h2>🎮 Game Settings</h2>
+    <button class="close-btn" id="closeDrawer">×</button>
+  </div>
+
+  <!-- TARGET BIN -->
+  <div class="setting-section">
+    <h3>🎯 Target Bin (Goal)</h3>
+    <div class="control-row">
+      <div class="control-label">
+        <span>Bin Position X</span>
+        <span class="control-val" id="valBinX">75%</span>
+      </div>
+      <input type="range" id="sliderBinX" min="10" max="90" value="75" />
+    </div>
+    <div class="control-row">
+      <div class="control-label">
+        <span>Bin Height (Y)</span>
+        <span class="control-val" id="valBinY">88%</span>
+      </div>
+      <input type="range" id="sliderBinY" min="40" max="95" value="88" />
+    </div>
+    <div class="control-row">
+      <div class="control-label">
+        <span>Bin Width</span>
+        <span class="control-val" id="valBinWidth">240px</span>
+      </div>
+      <input type="range" id="sliderBinWidth" min="120" max="420" value="240" />
+    </div>
+  </div>
+
+  <!-- SPAWNER -->
+  <div class="setting-section">
+    <h3>⚪ Ball Spawner</h3>
+    <div class="control-row">
+      <div class="control-label">
+        <span>Drop Position X</span>
+        <span class="control-val" id="valSpawnX">50%</span>
+      </div>
+      <input type="range" id="sliderSpawnX" min="5" max="95" value="50" />
+    </div>
+    <div class="control-row">
+      <div class="control-label">
+        <span>Drop Rate (Interval)</span>
+        <span class="control-val" id="valSpawnRate">1.4s</span>
+      </div>
+      <input type="range" id="sliderSpawnRate" min="300" max="3000" step="100" value="1400" />
+    </div>
+    <div class="control-row">
+      <div class="control-label">
+        <span>Ball Size</span>
+        <span class="control-val" id="valBallRadius">18px</span>
+      </div>
+      <input type="range" id="sliderBallRadius" min="10" max="36" value="18" />
+    </div>
+  </div>
+
+  <!-- PHYSICS -->
+  <div class="setting-section">
+    <h3>⚡ Physics</h3>
+    <div class="control-row">
+      <div class="control-label">
+        <span>Bounciness (Restitution)</span>
+        <span class="control-val" id="valBounciness">0.65</span>
+      </div>
+      <input type="range" id="sliderBounciness" min="0.10" max="0.95" step="0.05" value="0.65" />
+    </div>
+    <div class="control-row">
+      <div class="control-label">
+        <span>Gravity</span>
+        <span class="control-val" id="valGravity">1.5</span>
+      </div>
+      <input type="range" id="sliderGravity" min="0.4" max="3.2" step="0.1" value="1.5" />
+    </div>
+    <div class="control-row">
+      <div class="control-label">
+        <span>Max Balls</span>
+        <span class="control-val" id="valMaxBalls">40</span>
+      </div>
+      <input type="range" id="sliderMaxBalls" min="10" max="100" step="5" value="40" />
+    </div>
+  </div>
+
+  <!-- SOUND & DISPLAY -->
+  <div class="setting-section">
+    <h3>🔊 Sound & Display</h3>
+    <label class="checkbox-row">
+      <span>Sound Effects (Chimes)</span>
+      <input type="checkbox" id="chkSound" checked />
+    </label>
+    <label class="checkbox-row">
+      <span>Debug Outlines (D)</span>
+      <input type="checkbox" id="chkDebug" />
+    </label>
+    <button class="action-btn btn-clear" id="btnClearBalls">Clear Falling Balls</button>
+    <button class="action-btn btn-reset" id="btnResetSettings">Reset All Defaults</button>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 <script>
 // ── Canvas / screen size ───────────────────────────────────────────────────
-// Change these to match your projector's resolution if needed.
 const W = 1920, H = 1080;
-
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 canvas.width  = W;
@@ -38,10 +255,36 @@ function fitCanvas() {
 fitCanvas();
 window.addEventListener('resize', fitCanvas);
 
+// ── Persistent Settings ────────────────────────────────────────────────────
+const DEFAULT_SETTINGS = {
+  binXPercent: 75,
+  binYPercent: 88,
+  binWidth: 240,
+  binHeight: 120,
+  spawnXPercent: 50,
+  spawnIntervalMs: 1400,
+  ballRadius: 18,
+  bounciness: 0.65,
+  gravityY: 1.5,
+  maxBalls: 40,
+  soundEnabled: true,
+  debugMode: false,
+};
+
+let settings = { ...DEFAULT_SETTINGS };
+try {
+  const saved = localStorage.getItem('stickybounce_settings');
+  if (saved) settings = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+} catch(e) {}
+
+function saveSettings() {
+  try {
+    localStorage.setItem('stickybounce_settings', JSON.stringify(settings));
+  } catch(e) {}
+}
 
 // ── Calibration mode (?calibrate in URL) ──────────────────────────────────
 const IS_CALIBRATE = location.search.includes('calibrate');
-// These must match SCREEN_POINTS in calibrate.py
 const CAL_POINTS = [
   [W * 0.1, H * 0.1],
   [W * 0.9, H * 0.1],
@@ -49,41 +292,186 @@ const CAL_POINTS = [
   [W * 0.1, H * 0.9],
 ];
 
-
 // ── Matter.js setup ────────────────────────────────────────────────────────
 const { Engine, World, Bodies, Body, Events } = Matter;
-const engine = Engine.create({ gravity: { x: 0, y: 1.5 } });
+const engine = Engine.create({ gravity: { x: 0, y: settings.gravityY } });
 const world  = engine.world;
 
-// Static boundary walls (floor + sides, no ceiling — balls enter from top)
-World.add(world, [
-  Bodies.rectangle(W / 2,  H + 50,  W,   100, { isStatic: true }),  // floor
-  Bodies.rectangle(-50,    H / 2,   100, H,   { isStatic: true }),  // left
-  Bodies.rectangle(W + 50, H / 2,   100, H,   { isStatic: true }),  // right
-]);
+// Static boundary walls (floor + sides, no ceiling)
+const floor = Bodies.rectangle(W / 2,  H + 50,  W,   100, { isStatic: true });
+const wallL = Bodies.rectangle(-50,    H / 2,   100, H,   { isStatic: true });
+const wallR = Bodies.rectangle(W + 50, H / 2,   100, H,   { isStatic: true });
+World.add(world, [floor, wallL, wallR]);
 
+// ── Target Bin Construction ────────────────────────────────────────────────
+let binBodies = [];
+let binSensor = null;
+let binCaughtCount = 0;
+let binFlashTimer = 0;
 
-// ── Ball management ────────────────────────────────────────────────────────
-const BALL_RADIUS  = 18;
-const BALL_COLORS  = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#ff9ff3', '#ff9f43', '#a29bfe'];
-const SPAWN_INTERVAL_MS = 1400;
-const MAX_BALLS    = 40;   // remove oldest when exceeded
+function rebuildBin() {
+  binBodies.forEach(b => World.remove(world, b));
+  binBodies = [];
+
+  const cx = (settings.binXPercent / 100) * W;
+  const cy = (settings.binYPercent / 100) * H;
+  const bw = settings.binWidth;
+  const bh = settings.binHeight;
+  const wallThick = 16;
+
+  // Slanted lip walls
+  const leftWall = Bodies.rectangle(cx - bw / 2, cy - bh / 4, wallThick, bh, {
+    isStatic: true,
+    angle: -0.12,
+    restitution: 0.5,
+    render: { visible: false }
+  });
+  const rightWall = Bodies.rectangle(cx + bw / 2, cy - bh / 4, wallThick, bh, {
+    isStatic: true,
+    angle: 0.12,
+    restitution: 0.5,
+    render: { visible: false }
+  });
+  const bottomWall = Bodies.rectangle(cx, cy + bh / 2 - 8, bw - 10, wallThick, {
+    isStatic: true,
+    render: { visible: false }
+  });
+
+  // Catch sensor (invisible trigger inside the bin)
+  binSensor = Bodies.rectangle(cx, cy + bh / 6, bw - 36, bh / 2, {
+    isStatic: true,
+    isSensor: true,
+    label: 'binSensor',
+    render: { visible: false }
+  });
+
+  binBodies = [leftWall, rightWall, bottomWall, binSensor];
+  World.add(world, binBodies);
+}
+rebuildBin();
+
+// ── Web Audio Synthesizer (No sound files required) ────────────────────────
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+document.addEventListener('pointerdown', initAudio, { once: false });
+document.addEventListener('keydown', initAudio, { once: false });
+
+const PENTATONIC = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50];
+let toneIndex = 0;
+
+function playBounceSound() {
+  if (!settings.soundEnabled) return;
+  initAudio();
+  if (!audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const freq = PENTATONIC[toneIndex % PENTATONIC.length];
+    toneIndex++;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.16);
+  } catch(e) {}
+}
+
+function playCatchSound() {
+  if (!settings.soundEnabled) return;
+  initAudio();
+  if (!audioCtx) return;
+  try {
+    const notes = [587.33, 783.99, 1174.66]; // D5, G5, D6 celebratory fanfare
+    [0, 0.08, 0.16].forEach((offset, idx) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(notes[idx], audioCtx.currentTime + offset);
+      gain.gain.setValueAtTime(0.25, audioCtx.currentTime + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + offset + 0.35);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(audioCtx.currentTime + offset);
+      osc.stop(audioCtx.currentTime + offset + 0.36);
+    });
+  } catch(e) {}
+}
+
+// ── Particle System for Celebrations & Bounces ─────────────────────────────
+const particles = [];
+
+function spawnCelebrationParticles(x, y, count = 45, baseColor = '#00f2fe') {
+  const colors = [baseColor, '#ffd93d', '#ff6b6b', '#6bcb77', '#ff9ff3', '#ffffff'];
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 9 + 3;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 4, // slight upward burst
+      radius: Math.random() * 6 + 3,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      alpha: 1.0,
+      decay: Math.random() * 0.02 + 0.015,
+    });
+  }
+}
+
+function updateAndDrawParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.22; // gravity on sparks
+    p.alpha -= p.decay;
+
+    if (p.alpha <= 0) {
+      particles.splice(i, 1);
+      continue;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = p.color;
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ── Ball Management ────────────────────────────────────────────────────────
+const BALL_COLORS = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#ff9ff3', '#ff9f43', '#a29bfe'];
 const TRAIL_LENGTH = 14;
-
 const balls = [];
+let spawnIntervalId = null;
 
 function spawnBall() {
-  if (balls.length >= MAX_BALLS) {
+  if (balls.length >= settings.maxBalls) {
     const oldest = balls.shift();
     World.remove(world, oldest);
   }
 
-  const x    = W / 2;
-  const ball = Bodies.circle(x, -BALL_RADIUS - 10, BALL_RADIUS, {
-    restitution: 0.65,
+  const spawnX = (settings.spawnXPercent / 100) * W;
+  const radius = settings.ballRadius;
+  const ball = Bodies.circle(spawnX, -radius - 12, radius, {
+    restitution: settings.bounciness,
     friction:    0.08,
     frictionAir: 0.001,
     density:     0.002,
+    label:       'ball',
   });
   ball.gameColor = BALL_COLORS[Math.floor(Math.random() * BALL_COLORS.length)];
   ball.trail     = [];
@@ -92,8 +480,40 @@ function spawnBall() {
   balls.push(ball);
 }
 
-setInterval(spawnBall, SPAWN_INTERVAL_MS);
+function resetSpawnTimer() {
+  if (spawnIntervalId) clearInterval(spawnIntervalId);
+  spawnIntervalId = setInterval(spawnBall, settings.spawnIntervalMs);
+}
+resetSpawnTimer();
 
+// ── Collision Handling (Bin sensor & Sticky notes) ─────────────────────────
+Events.on(engine, 'collisionStart', (evt) => {
+  for (const pair of evt.pairs) {
+    const { bodyA, bodyB } = pair;
+
+    // Check if ball touched Target Bin sensor
+    if (bodyA === binSensor || bodyB === binSensor) {
+      const ballBody = bodyA === binSensor ? bodyB : bodyA;
+      const ballIdx = balls.indexOf(ballBody);
+      if (ballIdx !== -1) {
+        binCaughtCount++;
+        binFlashTimer = 25; // glow frames
+        playCatchSound();
+        spawnCelebrationParticles(ballBody.position.x, ballBody.position.y, 50, ballBody.gameColor);
+        World.remove(world, ballBody);
+        balls.splice(ballIdx, 1);
+        continue;
+      }
+    }
+
+    // Check if ball bounced on a sticky note
+    const isNoteA = noteBodies.includes(bodyA);
+    const isNoteB = noteBodies.includes(bodyB);
+    if ((isNoteA && balls.includes(bodyB)) || (isNoteB && balls.includes(bodyA))) {
+      playBounceSound();
+    }
+  }
+});
 
 // ── Sticky-note physics bodies ─────────────────────────────────────────────
 let noteBodies = [];
@@ -108,41 +528,33 @@ function updateNotes(notes) {
       isStatic:    true,
       angle:       angleRad,
       friction:    0.3,
-      restitution: 0.4,
+      restitution: settings.bounciness,
+      label:       'stickyNote',
     });
     noteBodies.push(body);
     World.add(world, body);
   }
 }
 
-
 // ── WebSocket ──────────────────────────────────────────────────────────────
 let wsStatus = 'connecting…';
 
 function connect() {
   const ws = new WebSocket('ws://localhost:8765');
-
   ws.onopen = () => {
     wsStatus = 'connected';
-    console.log('[ws] connected');
   };
-
   ws.onmessage = (e) => {
     const data = JSON.parse(e.data);
     updateNotes(data.notes);
   };
-
   ws.onclose = () => {
     wsStatus = 'disconnected — retrying…';
-    console.warn('[ws] closed, retrying in 2s');
     setTimeout(connect, 2000);
   };
-
   ws.onerror = () => ws.close();
 }
-
 connect();
-
 
 // ── Cleanup balls that fell off screen ────────────────────────────────────
 function cleanup() {
@@ -154,28 +566,93 @@ function cleanup() {
   }
 }
 
-
-// ── Rendering ─────────────────────────────────────────────────────────────
-let debugMode = false;
-
+// ── Rendering Helpers ─────────────────────────────────────────────────────
 function hexToRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+function drawSpawnerChute() {
+  const sx = (settings.spawnXPercent / 100) * W;
+  ctx.save();
+  ctx.shadowBlur = 18;
+  ctx.shadowColor = '#00f2fe';
+  ctx.strokeStyle = '#00f2fe';
+  ctx.lineWidth = 3;
+
+  // Funnel chute
+  ctx.beginPath();
+  ctx.moveTo(sx - 28, 0);
+  ctx.lineTo(sx - 16, 26);
+  ctx.lineTo(sx + 16, 26);
+  ctx.lineTo(sx + 28, 0);
+  ctx.stroke();
+
+  // Subtle pulsing indicator
+  ctx.fillStyle = '#00f2fe';
+  ctx.beginPath();
+  ctx.arc(sx, 16, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawTargetBin() {
+  const cx = (settings.binXPercent / 100) * W;
+  const cy = (settings.binYPercent / 100) * H;
+  const bw = settings.binWidth;
+  const bh = settings.binHeight;
+
+  ctx.save();
+
+  const isFlashing = binFlashTimer > 0;
+  if (isFlashing) binFlashTimer--;
+
+  const binColor = isFlashing ? '#ffd700' : '#00f2fe';
+  ctx.shadowBlur = isFlashing ? 40 : 20;
+  ctx.shadowColor = binColor;
+
+  // Draw U-shaped basket outline
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = binColor;
+  ctx.fillStyle = isFlashing ? 'rgba(255, 215, 0, 0.25)' : 'rgba(0, 242, 254, 0.08)';
+
+  ctx.beginPath();
+  ctx.moveTo(cx - bw / 2 - 12, cy - bh / 2 + 10);
+  ctx.lineTo(cx - bw / 2, cy + bh / 2 - 8);
+  ctx.quadraticCurveTo(cx - bw / 2, cy + bh / 2, cx - bw / 2 + 16, cy + bh / 2);
+  ctx.lineTo(cx + bw / 2 - 16, cy + bh / 2);
+  ctx.quadraticCurveTo(cx + bw / 2, cy + bh / 2, cx + bw / 2, cy + bh / 2 - 8);
+  ctx.lineTo(cx + bw / 2 + 12, cy - bh / 2 + 10);
+  ctx.stroke();
+  ctx.fill();
+
+  // Target Banner & Score
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = binColor;
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('★ TARGET BIN ★', cx, cy + bh / 2 + 28);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '14px monospace';
+  ctx.fillText(`CAUGHT: ${binCaughtCount}`, cx, cy + bh / 2 + 48);
+
+  ctx.restore();
+}
+
 function drawBalls() {
+  const radius = settings.ballRadius;
   for (const ball of balls) {
     const { x, y } = ball.position;
 
-    // Update trail
     ball.trail.push({ x, y });
     if (ball.trail.length > TRAIL_LENGTH) ball.trail.shift();
 
-    // Draw trail
     const rgb = hexToRgb(ball.gameColor);
     for (let i = 1; i < ball.trail.length; i++) {
       const alpha = (i / ball.trail.length) * 0.35;
-      const width = BALL_RADIUS * 1.2 * (i / ball.trail.length);
+      const width = radius * 1.2 * (i / ball.trail.length);
       ctx.beginPath();
       ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
       ctx.lineWidth   = width;
@@ -185,20 +662,18 @@ function drawBalls() {
       ctx.stroke();
     }
 
-    // Glow + ball
     ctx.save();
-    ctx.shadowBlur  = 28;
+    ctx.shadowBlur  = 26;
     ctx.shadowColor = ball.gameColor;
     ctx.fillStyle   = ball.gameColor;
     ctx.beginPath();
-    ctx.arc(x, y, BALL_RADIUS, 0, Math.PI * 2);
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
 
-    // Specular highlight
     ctx.shadowBlur  = 0;
-    ctx.fillStyle   = 'rgba(255,255,255,0.35)';
+    ctx.fillStyle   = 'rgba(255,255,255,0.4)';
     ctx.beginPath();
-    ctx.arc(x - BALL_RADIUS * 0.3, y - BALL_RADIUS * 0.3, BALL_RADIUS * 0.35, 0, Math.PI * 2);
+    ctx.arc(x - radius * 0.3, y - radius * 0.3, radius * 0.35, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -206,8 +681,8 @@ function drawBalls() {
 
 function drawNoteOutlines() {
   ctx.save();
-  ctx.strokeStyle = 'rgba(255, 80, 80, 0.75)';
-  ctx.lineWidth   = 2;
+  ctx.strokeStyle = 'rgba(255, 80, 80, 0.85)';
+  ctx.lineWidth   = 3;
   for (const body of noteBodies) {
     const verts = body.vertices;
     ctx.beginPath();
@@ -248,24 +723,30 @@ function drawCalibrationMarkers() {
 }
 
 function render() {
-  // Semi-transparent clear for motion-blur feel
+  // Motion blur background clear
   ctx.fillStyle = 'rgba(0, 0, 0, 0.82)';
   ctx.fillRect(0, 0, W, H);
 
+  drawSpawnerChute();
+  drawTargetBin();
   drawBalls();
-  if (debugMode)      drawNoteOutlines();
-  if (IS_CALIBRATE)   drawCalibrationMarkers();
+  updateAndDrawParticles();
 
-  // WS status (top-left, subtle)
-  ctx.fillStyle    = 'rgba(255,255,255,0.2)';
-  ctx.font         = '13px monospace';
-  ctx.textAlign    = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText(`ws: ${wsStatus}   balls: ${balls.length}   notes: ${noteBodies.length}`, 16, 16);
+  if (settings.debugMode) drawNoteOutlines();
+  if (IS_CALIBRATE)       drawCalibrationMarkers();
+
+  // WS status in top-left (only shown in windowed mode for the operator)
+  const isFullscreen = !!document.fullscreenElement;
+  if (!isFullscreen) {
+    ctx.fillStyle    = 'rgba(255,255,255,0.3)';
+    ctx.font         = '13px monospace';
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`ws: ${wsStatus}   balls: ${balls.length}   notes: ${noteBodies.length}   caught: ${binCaughtCount}`, 16, 16);
+  }
 
   requestAnimationFrame(render);
 }
-
 
 // ── Physics loop ───────────────────────────────────────────────────────────
 (function physicsLoop() {
@@ -274,13 +755,111 @@ function render() {
   setTimeout(physicsLoop, 1000 / 60);
 })();
 
+// ── UI Controls & Event Listeners ──────────────────────────────────────────
+const drawer = document.getElementById('settingsDrawer');
+const gearBtn = document.getElementById('gearBtn');
+const closeDrawer = document.getElementById('closeDrawer');
 
-// ── Keyboard shortcuts ─────────────────────────────────────────────────────
-document.addEventListener('keydown', e => {
-  if (e.key === 'f' || e.key === 'F') document.documentElement.requestFullscreen();
-  if (e.key === 'd' || e.key === 'D') debugMode = !debugMode;
+function toggleSettings(force) {
+  const isOpen = force !== undefined ? force : !drawer.classList.contains('open');
+  drawer.classList.toggle('open', isOpen);
+}
+
+gearBtn.addEventListener('click', () => toggleSettings());
+closeDrawer.addEventListener('click', () => toggleSettings(false));
+
+// Connect Sliders to Settings
+const bindSlider = (id, valId, key, formatFn, onChange) => {
+  const input = document.getElementById(id);
+  const label = document.getElementById(valId);
+  input.value = settings[key];
+  label.textContent = formatFn(settings[key]);
+  input.addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    settings[key] = val;
+    label.textContent = formatFn(val);
+    saveSettings();
+    if (onChange) onChange(val);
+  });
+};
+
+bindSlider('sliderBinX', 'valBinX', 'binXPercent', v => `${Math.round(v)}%`, rebuildBin);
+bindSlider('sliderBinY', 'valBinY', 'binYPercent', v => `${Math.round(v)}%`, rebuildBin);
+bindSlider('sliderBinWidth', 'valBinWidth', 'binWidth', v => `${Math.round(v)}px`, rebuildBin);
+
+bindSlider('sliderSpawnX', 'valSpawnX', 'spawnXPercent', v => `${Math.round(v)}%`);
+bindSlider('sliderSpawnRate', 'valSpawnRate', 'spawnIntervalMs', v => `${(v/1000).toFixed(1)}s`, resetSpawnTimer);
+bindSlider('sliderBallRadius', 'valBallRadius', 'ballRadius', v => `${Math.round(v)}px`);
+
+bindSlider('sliderBounciness', 'valBounciness', 'bounciness', v => v.toFixed(2), v => {
+  balls.forEach(b => Body.set(b, 'restitution', v));
+});
+bindSlider('sliderGravity', 'valGravity', 'gravityY', v => v.toFixed(1), v => {
+  engine.gravity.y = v;
+});
+bindSlider('sliderMaxBalls', 'valMaxBalls', 'maxBalls', v => Math.round(v));
+
+// Checkboxes
+const chkSound = document.getElementById('chkSound');
+chkSound.checked = settings.soundEnabled;
+chkSound.addEventListener('change', (e) => {
+  settings.soundEnabled = e.target.checked;
+  saveSettings();
 });
 
+const chkDebug = document.getElementById('chkDebug');
+chkDebug.checked = settings.debugMode;
+chkDebug.addEventListener('change', (e) => {
+  settings.debugMode = e.target.checked;
+  saveSettings();
+});
+
+// Clear & Reset buttons
+document.getElementById('btnClearBalls').addEventListener('click', () => {
+  balls.forEach(b => World.remove(world, b));
+  balls.length = 0;
+});
+
+document.getElementById('btnResetSettings').addEventListener('click', () => {
+  settings = { ...DEFAULT_SETTINGS };
+  saveSettings();
+  location.reload();
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    toggleSettings();
+  }
+  if (e.key === 's' || e.key === 'S') {
+    // Only toggle if not actively in an input
+    if (document.activeElement.tagName !== 'INPUT') toggleSettings();
+  }
+  if (e.key === 'f' || e.key === 'F') {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      toggleSettings(false); // auto-hide settings in fullscreen
+    } else {
+      document.exitFullscreen();
+    }
+  }
+  if (e.key === 'd' || e.key === 'D') {
+    settings.debugMode = !settings.debugMode;
+    chkDebug.checked = settings.debugMode;
+    saveSettings();
+  }
+  if (e.key === 'r' || e.key === 'R') {
+    balls.forEach(b => World.remove(world, b));
+    balls.length = 0;
+  }
+});
+
+document.addEventListener('fullscreenchange', () => {
+  const isFs = !!document.fullscreenElement;
+  document.body.classList.toggle('is-fullscreen', isFs);
+  if (isFs) toggleSettings(false);
+});
 
 // ── Start ──────────────────────────────────────────────────────────────────
 render();
